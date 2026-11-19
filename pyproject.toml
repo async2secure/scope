@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "scope"
+version = "0.1.0"
+description = "Capture oscilloscope traces (LeCroy via VISA) and store/read them in compact HDF5 files"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Nay Aung Kyaw" }]
+keywords = ["oscilloscope", "hdf5", "h5py", "pyvisa", "side-channel", "traces"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering",
+]
+dependencies = ["numpy", "h5py"]
+
+[project.optional-dependencies]
+scope = ["pyvisa", "pyvisa-py"]   # talk to the oscilloscope
+serial = ["pyserial"]              # talk to the Feather board
+all = ["pyvisa", "pyvisa-py", "pyserial"]
+test = ["pytest"]
+
+[project.urls]
+Homepage = "https://github.com/async2secure/scope"
+Issues = "https://github.com/async2secure/scope/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "tests"]
