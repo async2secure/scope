@@ -7,10 +7,11 @@ from __future__ import annotations
 
 import re
 import time
-from dataclasses import dataclass
 from typing import Dict, Optional, Union
 
 import numpy as np
+
+from scope.domain.valueobjects import Waveform
 
 
 class ScopeError(RuntimeError):
@@ -28,17 +29,6 @@ def parse_inspect(reply: str) -> float:
     if not m:
         raise ValueError(f"Could not parse a number out of INSPECT? reply: {reply!r}")
     return float(m.group(0))
-
-
-@dataclass
-class Waveform:
-    raw: np.ndarray   # int16 ADC counts
-    gain: float
-    offset: float
-
-    @property
-    def volts(self) -> np.ndarray:
-        return self.raw.astype(np.float64) * self.gain - self.offset
 
 
 def resolve_resource(address: str) -> str:
@@ -121,15 +111,38 @@ class Channel:
         return self
 
     def read(self) -> Waveform:
-        """Read the current waveform (enabling the trace first if needed) together
-        with the gain/offset the scope reports for it."""
+        """Read waveform using the previously verified LeCroy settings."""
+
         self.ensure_enabled()
+
         inst = self.scope.inst
-        raw = inst.query_binary_values(f"{self.name}:WF? DAT1", datatype="h",
-                                       is_big_endian=False, container=np.array)
-        gain = parse_inspect(inst.query(f"{self.name}:INSPECT? 'VERTICAL_GAIN'"))
-        offset = parse_inspect(inst.query(f"{self.name}:INSPECT? 'VERTICAL_OFFSET'"))
-        return Waveform(np.asarray(raw).astype(np.int16), gain, offset)
+
+        # Download waveform using the working command
+        raw = inst.query_binary_values(
+            f"{self.name}:WAVEFORM? DAT1",
+            datatype="h",
+            is_big_endian=True,
+            container=np.array,
+        )
+
+        # Retrieve vertical scaling
+        gain = parse_inspect(
+            inst.query(
+                f'{self.name}:INSPECT? "VERTICAL_GAIN"'
+            )
+        )
+
+        offset = parse_inspect(
+            inst.query(
+                f'{self.name}:INSPECT? "VERTICAL_OFFSET"'
+            )
+        )
+
+        return Waveform(
+            np.asarray(raw, dtype=np.int16),
+            gain,
+            offset
+        )
 
     def capture(self, timeout: float = 10.0, poll_interval: float = 0.0) -> Waveform:
         """Arm a single acquisition, wait for the trigger and read this channel.
@@ -179,8 +192,18 @@ class Scope:
         return self.inst.query("*IDN?").strip()
 
     def setup_comm(self) -> None:
-        self.inst.write("COMM_HEADER OFF")
-        self.inst.write("COMM_FORMAT DEF9,WORD,BIN")
+        self.inst.chunk_size = 4 * 1024 * 1024
+
+        self.inst.read_termination = "\n"
+        self.inst.write_termination = "\n"
+
+        self.inst.write("CHDR OFF")
+        self.inst.write("CORD HI")
+        self.inst.write("CFMT DEF9,WORD,BIN")
+
+        self.inst.write("WFSU SP,0,NP,0,FP,0")
+
+        self.inst.query("*OPC?")
 
     # -- channels ----------------------------------------------------------
     def channel(self, name: Union[str, Channel]) -> Channel:
